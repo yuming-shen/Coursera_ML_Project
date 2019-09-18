@@ -1,0 +1,140 @@
+---
+title: "Coursera: Practical Machine Learning - Prediction Assignment"
+author: "Yu-Ming Shen"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: html_document
+---
+
+
+## I. Background 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+## II. Data loading and manipulation
+### 1. Load the database
+The dataset used in the project comes from "Velloso,E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. QualitativeActivity Recognition of Weight Lifting Exercises. Proceedings of4th International Conference in Cooperation with SIGCHI (AugmentedHuman '13) . Stuttgart, Germany: ACM SIGCHI, 2013". 
+
+Data description:
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (ClassA), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
+
+The training data for this project is available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data is available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The above URL provided are the source to load the datasets.  
+
+```{r}
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=TRUE)
+test <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE)
+dim(training)
+dim(test)
+table(training$classe)
+```
+
+### 2. Required packages
+The R packages below are required for the data analyses. The caret (Classification And Regression Training) package is used to streamline the model training process for complex regression and classification problems, and the rattle package is providing a graphical user interface for the results.  
+
+```{r, warning=FALSE}
+library(caret)
+library(rattle)
+```
+
+### 3. Data manipulation
+There are three steps for data manipulation. First, the first 7 variables in training dataset are removed since they are patient names and time frames which are not predictors and have no impact on prediction. Second, those varabies have any of NA are excluded since no missing value is allowed in model buidling. Third, a total of 5 classes are to be categorized. The near zero variance variables need to be exclued as well.    
+
+```{r}
+training_clean <- training[, -c(1:7)] 
+dim(training_clean)
+training_na <- training_clean[sapply(training_clean, function(x) !any(is.na(x)))] 
+dim(training_na)
+training_nzv <- training_na[, -nearZeroVar(training_na)] 
+dim(training_nzv)
+```
+
+### 4. Cross validation
+Training data is splitting into 70% as train set and 30% as test set. Train set is used to build the prediction model and test set is served to compute the out of sample error. 
+
+```{r}
+set.seed(1212)
+CVdata <- createDataPartition(y=training_nzv$classe, p=0.7, list=FALSE)
+trainset <- training_nzv[CVdata,]; dim(trainset)
+testset <- training_nzv[-CVdata,]; dim(testset)
+```
+
+## III. Prediction model buidling
+For the project work, three type of approaches are used to build prediction model: 
+(1) Classification tree,
+(2) Random forest,
+(3) Gradient boosted model.
+
+Confusion Matrix is displayed at the end of each analysis to better visualize the accuracy of the models. The final model will be chosen based on highest accuracy among three models.  
+
+### 1. Classification Trees
+First, the model was built by using classification tree, and then use fancyRpartPlot() function to plot classification tree.
+
+```{r}
+set.seed(1235)
+modTree <- train(classe ~., method="rpart", data=trainset)
+print(modTree$finalModel)
+fancyRpartPlot(modTree$finalModel)
+```
+
+The model "modTree" is used to validate on the "testset" dataset and to evaluate the accuracy rate.  
+
+```{r}
+predtree <- predict(modTree, testset)
+confusionMatrix(predtree, testset$classe)
+```
+
+
+### 2. Random forest
+Second, the model is built by using random forest.
+
+```{r}
+trainCT <- trainControl(method="boot", number=4)
+modrf <- train(classe ~., method="rf", data=trainset, prox=TRUE, trControl=trainCT)
+print(modrf$finalModel)
+```
+
+The model "modrf" is used to validate on the "testset" dataset and to evaluate the accuracy rate.  
+
+```{r}
+predrf <- predict(modrf, testset)
+confusionMatrix(predrf, testset$classe)
+```
+
+
+### 3. Gradient boosted model
+Third,the model is built by using gradient boosted model
+.
+```{r}
+modgbm <- train(classe~., method="gbm", data=trainset, verbose=FALSE, trControl=trainCT)
+print(modgbm$finalModel)
+```
+
+The model "modgbm" is used to validate on the "testset" dataset and to evaluate the accuracy rate.  
+
+```{r}
+predgbm <- predict(modgbm, testset)
+confusionMatrix(predgbm, testset$classe)
+```
+
+
+## IV. Model comparison
+By comparing the accuracy rate between models, the model by using random forest is suggested to better prediction. Therefore, it is chosen to predict classes for the 20 test cases. 
+
+```{r}
+confusionMatrix(predtree, testset$classe)$overall['Accuracy']
+confusionMatrix(predrf, testset$classe)$overall['Accuracy']
+confusionMatrix(predgbm, testset$classe)$overall['Accuracy']
+```
+
+## V. Apply optimal model to predict classes for the 20 test cases
+The results are shown as below,
+
+```{r}
+predict(modrf, test)
+```
+
